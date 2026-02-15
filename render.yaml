@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: healthcare-cloud-server-v3
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app_cloud.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
