@@ -2,6 +2,7 @@
 
 from flask import Flask, request, jsonify
 import torch
+torch.set_num_threads(1)
 import numpy as np
 import os
 import time
@@ -13,7 +14,7 @@ from cloud_mitbih_loader import load_record
 from cloud_windowing import generate_windows
 from cloud_features import extract_edge_features
 
-torch.set_num_threads(1)
+
 
 # ---------------- App ---------------- #
 
@@ -70,11 +71,19 @@ def analyze():
     api_start = time.perf_counter()
     infer_start = time.perf_counter()
 
-    probs = []
-    for w in WINDOWS:
-        t = torch.tensor(w, dtype=torch.float32).unsqueeze(0).unsqueeze(-1)
-        with torch.no_grad():
-            probs.append(model(t).item())
+    # Convert all windows into one batch
+    batch = torch.tensor(WINDOWS, dtype=torch.float32).unsqueeze(-1)
+
+    with torch.no_grad():
+        outputs = model(batch)
+
+    # Convert to Python list
+    probs = outputs.squeeze().tolist()
+
+    # If single value, wrap into list
+    if isinstance(probs, float):
+        probs = [probs]
+
 
     inference_time_ms = (time.perf_counter() - infer_start) * 1000
 
