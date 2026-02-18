@@ -13,6 +13,8 @@ from cloud_mitbih_loader import load_record
 from cloud_windowing import generate_windows
 from cloud_features import extract_edge_features
 
+torch.set_num_threads(1)
+
 # ---------------- App ---------------- #
 
 app = Flask(__name__)
