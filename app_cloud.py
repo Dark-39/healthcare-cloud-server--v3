@@ -72,7 +72,9 @@ def analyze():
     infer_start = time.perf_counter()
 
     # Convert all windows into one batch
-    batch = torch.tensor(WINDOWS, dtype=torch.float32).unsqueeze(-1)
+    batch_np = np.array(WINDOWS, dtype=np.float32)
+    batch = torch.from_numpy(batch_np).unsqueeze(-1)
+
 
     with torch.no_grad():
         outputs = model(batch)
