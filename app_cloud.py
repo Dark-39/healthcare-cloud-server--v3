@@ -73,7 +73,7 @@ def analyze():
         # -------- Model Forward -------- #
         with torch.no_grad():
             outputs = model(batch)
-
+            outputs = torch.sigmoid(outputs)
         probs = outputs.squeeze().tolist()
 
         if isinstance(probs, float):
