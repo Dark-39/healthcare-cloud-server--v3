@@ -11,9 +11,6 @@ from flask_cors import CORS
 
 from cloud_config import WINDOW_SAMPLES, RISK_THRESHOLD
 from cloud_transformer import ECGTransformer
-from cloud_mitbih_loader import load_record
-from cloud_windowing import generate_windows
-from cloud_features import extract_edge_features
 
 # ---------------- App ---------------- #
 
@@ -22,7 +19,6 @@ CORS(app)
 
 # ---------------- Constants ---------------- #
 
-MAX_WINDOWS = 1   # 🔥 Reduced for stability on Render free tier
 CLOUD_MODEL_ACCURACY = 0.92
 
 # ---------------- Model loading ---------------- #
@@ -35,17 +31,6 @@ model = ECGTransformer(seq_len=WINDOW_SAMPLES)
 model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
 model.eval()
 print("Model loaded")
-
-# ---------------- Preload data ---------------- #
-
-print("Loading ECG record 100...")
-ecg, ann_samples, ann_symbols = load_record("100")
-
-print("Generating windows...")
-WINDOWS, _ = generate_windows(ecg, ann_samples, ann_symbols)
-WINDOWS = WINDOWS[:MAX_WINDOWS]
-
-EDGE_FEATURES_SAMPLE = extract_edge_features(WINDOWS[0])
 
 print("Cloud server ready")
 
@@ -64,40 +49,42 @@ def health():
 def analyze():
     try:
         api_start = time.perf_counter()
-        infer_start = time.perf_counter()
 
-        # -------- Safe Batch Creation -------- #
-        batch_np = np.array(WINDOWS, dtype=np.float32)
-        batch = torch.from_numpy(batch_np).unsqueeze(-1)
+        data = request.get_json()
+        ecg_window = data.get("ecg_window")
+
+        if ecg_window is None:
+            return jsonify({
+                "status": "error",
+                "message": "ecg_window is required"
+            }), 400
+
+        # -------- Prepare Single Window -------- #
+        window_np = np.array(ecg_window, dtype=np.float32)
+        window_tensor = torch.from_numpy(window_np).unsqueeze(0).unsqueeze(-1)
 
         # -------- Model Forward -------- #
-        with torch.no_grad():
-            outputs = model(batch)
-            outputs = torch.sigmoid(outputs)
-        probs = outputs.squeeze().tolist()
+        infer_start = time.perf_counter()
 
-        if isinstance(probs, float):
-            probs = [probs]
+        with torch.no_grad():
+            output = model(window_tensor)
+            output = torch.sigmoid(output)
 
         inference_time_ms = (time.perf_counter() - infer_start) * 1000
 
-        avg_prob = float(np.mean(probs))
-        risk = "high" if avg_prob >= RISK_THRESHOLD else "low"
+        prob = float(output.item())
+        risk = "high" if prob >= RISK_THRESHOLD else "low"
 
         total_time_ms = (time.perf_counter() - api_start) * 1000
 
-        response = {
+        return jsonify({
             "status": "success",
             "risk_level": risk,
-            "confidence": round(avg_prob, 4),
-            "windows_used": len(WINDOWS),
-            "edge_features": EDGE_FEATURES_SAMPLE,
+            "confidence": round(prob, 4),
             "inference_time_ms": round(inference_time_ms, 2),
             "total_time_ms": round(total_time_ms, 2),
             "model_accuracy": CLOUD_MODEL_ACCURACY
-        }
-
-        return jsonify(response), 200
+        }), 200
 
     except Exception as e:
         print("ERROR INSIDE /analyze:", str(e))
