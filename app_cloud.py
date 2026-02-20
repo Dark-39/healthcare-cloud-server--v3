@@ -22,7 +22,7 @@ CORS(app)
 
 # ---------------- Constants ---------------- #
 
-MAX_WINDOWS = 10
+MAX_WINDOWS = 1   # 🔥 Reduced for stability on Render free tier
 CLOUD_MODEL_ACCURACY = 0.92
 
 # ---------------- Model loading ---------------- #
