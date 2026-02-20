@@ -9,3 +9,4 @@ matplotlib==3.10.8
 
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.5.1+cpu
+gunicorn
