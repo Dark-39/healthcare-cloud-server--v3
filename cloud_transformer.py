@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class ECGTransformer(nn.Module):
-    def __init__(self, seq_len, d_model=64, nhead=8, layers=3, dropout=0.2):
+    def __init__(self, seq_len, d_model=128, nhead=8, layers=3, dropout=0.2):
         super().__init__()
 
         # -------- CNN Downsampling -------- #
