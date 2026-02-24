@@ -1,47 +1,41 @@
-# cloud_transformer.py
-
 import torch
 import torch.nn as nn
 
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
+class ECGTransformer(nn.Module):
+    def __init__(self, seq_len, d_model=128, nhead=8, layers=3, dropout=0.2):
         super().__init__()
 
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        # -------- CNN Downsampling -------- #
+        self.conv = nn.Sequential(
+            nn.Conv1d(1, 32, kernel_size=7, stride=2, padding=3),
+            nn.BatchNorm1d(32),
+            nn.GELU(),
 
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model)
+            nn.Conv1d(32, 64, kernel_size=5, stride=2, padding=2),
+            nn.BatchNorm1d(64),
+            nn.GELU(),
+
+            nn.Conv1d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm1d(128),
+            nn.GELU(),
+
+            nn.Conv1d(128, d_model, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm1d(d_model),
+            nn.GELU()
         )
 
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
+        # -------- Dynamic Positional Encoding -------- #
+        # After 3 stride-2 layers:
+        # 3600  → 450
+        # 10800 → 1350
+        # So we allocate safely above max expected length
 
-        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
+        self.max_seq_len = 2000  # Safe upper bound
+        self.pos_encoding = nn.Parameter(
+            torch.randn(1, self.max_seq_len, d_model)
+        )
 
-        self.register_buffer("pe", pe)
-
-    def forward(self, x):
-        # x shape: (batch, seq, d_model)
-        x = x + self.pe[:, : x.size(1)]
-        return x
-
-
-class ECGTransformer(nn.Module):
-    def __init__(self, seq_len, d_model=64, nhead=4, layers=2, dropout=0.1):
-        super().__init__()
-
-        self.seq_len = seq_len
-        self.d_model = d_model
-
-        # linear embedding for 1-D ECG samples
-        self.embed = nn.Linear(1, d_model)
-
-        # positional encoding
-        self.pos_encoding = PositionalEncoding(d_model=d_model, max_len=seq_len)
-
-        # transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
             nhead=nhead,
@@ -53,37 +47,38 @@ class ECGTransformer(nn.Module):
 
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=layers)
 
-        # CLS token for classification
         self.cls_token = nn.Parameter(torch.zeros(1, 1, d_model))
-
         self.norm = nn.LayerNorm(d_model)
-
-        # output head (raw logits, NO sigmoid here)
         self.classifier = nn.Linear(d_model, 1)
 
     def forward(self, x):
-        # x : (batch, seq_len, 1)
+        # x: (batch, seq_len, 1)
+
+        x = x.transpose(1, 2)   # (batch, 1, seq_len)
+        x = self.conv(x)        # (batch, d_model, new_seq)
+        x = x.transpose(1, 2)   # (batch, new_seq, d_model)
 
         b = x.size(0)
 
-        # linear projection
-        x = self.embed(x)  # (b, seq, d_model)
+        # Add CLS token
+        cls = self.cls_token.expand(b, 1, x.size(-1))
+        x = torch.cat((cls, x), dim=1)
 
-        # positional encoding
-        x = self.pos_encoding(x)
+        # Apply positional encoding dynamically
+        seq_len = x.size(1)
 
-        # prepend CLS token
-        cls = self.cls_token.expand(b, 1, self.d_model)
-        x = torch.cat((cls, x), dim=1)  # (b, seq+1, d_model)
+        if seq_len > self.max_seq_len:
+            raise ValueError(
+                f"Sequence length {seq_len} exceeds max_seq_len {self.max_seq_len}"
+            )
 
-        # transformer encoder
+        x = x + self.pos_encoding[:, :seq_len]
+
         x = self.encoder(x)
 
-        # take CLS output
-        cls_out = x[:, 0, :]  # (b, d_model)
-
+        cls_out = x[:, 0, :]
         cls_out = self.norm(cls_out)
 
-        logits = self.classifier(cls_out)  # (b,1)
+        logits = self.classifier(cls_out)
 
-        return logits.view(-1)  # return raw logits
+        return logits.view(-1)

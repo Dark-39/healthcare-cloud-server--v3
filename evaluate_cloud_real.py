@@ -1,4 +1,5 @@
 # evaluate_cloud_real.py
+
 import time
 import numpy as np
 import torch
@@ -8,12 +9,20 @@ from cloud_mitbih_loader import load_record
 from cloud_windowing import generate_windows
 from cloud_config import WINDOW_SAMPLES, RISK_THRESHOLD
 
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_curve,
+    auc
+)
 
 # ---------------- Config ---------------- #
 
-RECORDS = ["100", "101", "102", "103", "104"]
-MODEL_PATH = "cloud_transformer_mitbih.pth"
+RECORDS = ["106"]   # Evaluate unseen patient
+MODEL_PATH = "cloud_transformer_best.pth"
 
 # ---------------- Load model ---------------- #
 
@@ -27,10 +36,7 @@ print("Model loaded")
 
 y_true = []
 y_pred = []
-
-low_samples = []
-mid_samples = []
-high_samples = []
+y_probs = []
 
 latencies = []
 
@@ -58,18 +64,11 @@ for rid in RECORDS:
 
         y_true.append(label)
         y_pred.append(pred)
+        y_probs.append(prob)
 
-        # Representative samples
-        if label == 0 and len(low_samples) < 1:
-            low_samples.append((label, prob))
-        elif label == 1 and prob < RISK_THRESHOLD and len(mid_samples) < 1:
-            mid_samples.append((label, prob))
-        elif label == 1 and prob >= RISK_THRESHOLD and len(high_samples) < 1:
-            high_samples.append((label, prob))
+# ---------------- Standard Metrics ---------------- #
 
-# ---------------- Metrics ---------------- #
-
-print("\n===== CLOUD TRANSFORMER PERFORMANCE (REAL DATA) =====\n")
+print("\n===== CLOUD TRANSFORMER PERFORMANCE =====\n")
 print(classification_report(y_true, y_pred, digits=4))
 print("Confusion Matrix:")
 print(confusion_matrix(y_true, y_pred))
@@ -77,22 +76,39 @@ print(confusion_matrix(y_true, y_pred))
 print(f"\nAverage inference latency: {np.mean(latencies):.2f} ms")
 print(f"Median inference latency : {np.median(latencies):.2f} ms")
 
-# ---------------- Representative cases ---------------- #
+# ---------------- ROC ---------------- #
 
-def show_case(title, case):
-    label, prob = case
-    print(f"\n{title}")
-    print(f"Ground Truth : {'abnormal' if label else 'normal'}")
-    print(f"Predicted    : {'abnormal' if prob >= RISK_THRESHOLD else 'normal'}")
-    print(f"Confidence   : {prob:.4f}")
+fpr, tpr, thresholds = roc_curve(y_true, y_probs)
+roc_auc = auc(fpr, tpr)
 
-print("\n===== REPRESENTATIVE CASES =====")
+print(f"\nAUC Score: {roc_auc:.4f}")
 
-if low_samples:
-    show_case("LOW RISK CASE", low_samples[0])
+# ---------------- Threshold Sweep ---------------- #
 
-if mid_samples:
-    show_case("MID RISK CASE (borderline)", mid_samples[0])
+print("\n===== THRESHOLD SWEEP =====\n")
 
-if high_samples:
-    show_case("HIGH RISK CASE", high_samples[0])
+threshold_range = np.arange(0.05, 0.45, 0.02)
+
+best_f1 = 0
+best_threshold = 0
+
+for t in threshold_range:
+    preds = [1 if p >= t else 0 for p in y_probs]
+
+    precision = precision_score(y_true, preds)
+    recall = recall_score(y_true, preds)
+    f1 = f1_score(y_true, preds)
+
+    print(
+        f"Threshold {t:.2f} | "
+        f"Precision: {precision:.3f} | "
+        f"Recall: {recall:.3f} | "
+        f"F1: {f1:.3f}"
+    )
+
+    if f1 > best_f1:
+        best_f1 = f1
+        best_threshold = t
+
+print("\nBest Threshold based on F1:", round(best_threshold, 3))
+print("Best F1:", round(best_f1, 4))

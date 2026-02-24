@@ -28,7 +28,7 @@ MODEL_PATH = os.path.join(BASE_DIR, "cloud_transformer_mitbih.pth")
 
 print("Loading cloud Transformer model...")
 model = ECGTransformer(seq_len=WINDOW_SAMPLES)
-model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu"))
+model.load_state_dict(torch.load(MODEL_PATH, map_location="cpu", weights_only=True))
 model.eval()
 print("Model loaded")
 

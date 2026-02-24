@@ -17,12 +17,12 @@ def generate_windows(ecg, ann_samples, ann_symbols):
             if start <= s < end
         ]
 
-        label = 0  # low risk
+        label = 0
         if any(b not in NORMAL_BEATS for b in beats):
-            label = 1  # high risk
+            label = 1
 
-        # Normalize per window
-        window = (window - window.mean()) / (window.std() + 1e-8)
+        # ❌ REMOVED per-window normalization
+        # ❌ REMOVED multi-window concatenation
 
         windows.append(window)
         labels.append(label)

@@ -1,0 +1,41 @@
+# -----------------------------
+# Virtual Environments
+# -----------------------------
+venv/
+venv311/
+env/
+
+# -----------------------------
+# Python cache
+# -----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# -----------------------------
+# OS files
+# -----------------------------
+.DS_Store
+Thumbs.db
+
+# -----------------------------
+# Local development folders
+# -----------------------------
+.vscode/
+.idea/
+
+# -----------------------------
+# Training artifacts (LOCAL ONLY)
+# -----------------------------
+loss_curve.png
+accuracy_curve.png
+edge_loss_curve.png
+edge_accuracy_curve.png
+edge_roc_curve.png
+cloud_roc_curve.png
+
+# -----------------------------
+# Temporary logs
+# -----------------------------
+*.log
